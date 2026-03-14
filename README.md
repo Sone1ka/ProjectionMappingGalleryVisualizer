@@ -1,6 +1,6 @@
 # Gallery Visualizer
 
-A browser-based tool for visualizing projection-mapped gallery installations to scale. Compose multi-canvas layouts, preview animated projections blended onto painted subjects, and make informed decisions about canvas sizing, spacing, and projector field-of-projection — all without a projector or physical setup.
+A browser-based tool for visualizing a projection-mapped gallery wall installation to scale. Compose multi-canvas layouts, preview animated projections blended onto painted subjects, and make informed decisions about canvas sizing, spacing, and projector field-of-projection — all without a projector or physical setup.
 
 ---
 
