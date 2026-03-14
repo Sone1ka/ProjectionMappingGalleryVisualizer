@@ -6,7 +6,7 @@ A browser-based tool for visualizing a projection-mapped gallery wall installati
 
 ## Getting Started
 
-No installation required. Open `gallery-visualizer.html` in any modern desktop browser (Chrome, Firefox, Edge, Safari).
+No installation required. Open `gallery-visualizer.html` in any modern desktop browser (Chrome, Firefox, Edge, Safari). Upload one image and one video animation per canvas. Note that these should already be in the correct aspect ratio for the canvas size being tested.
 
 ---
 
