@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gallery Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #222222;
+    --border-bright: #333333;
+    --accent: #e8ff47;
+    --accent2: #ff6b35;
+    --text: #f0f0f0;
+    --text-dim: #666666;
+    --text-muted: #3a3a3a;
+    --toolbar-h: 56px;
+    --grid-color: rgba(255,255,255,0.04);
+    --grid-major: rgba(255,255,255,0.08);
+    --snap-color: rgba(232,255,71,0.6);
+    --label-color: rgba(232,255,71,0.85);
+    --gap-color: rgba(255,107,53,0.8);
+    --canvas-border: rgba(255,255,255,0.15);
+    --canvas-selected: rgba(232,255,71,0.8);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    user-select: none;
+  }
+
+  /* ── TOOLBAR ── */
+  #toolbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--toolbar-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 16px;
+    z-index: 1000;
+  }
+
+  .toolbar-brand {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-right: 16px;
+    white-space: nowrap;
+  }
+
+  .toolbar-sep {
+    width: 1px;
+    height: 28px;
+    background: var(--border-bright);
+    margin: 0 8px;
+  }
+
+  .tb-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .tb-btn:hover { border-color: var(--text-dim); background: #1a1a1a; }
+  .tb-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .tb-btn.active svg { stroke: #000; }
+  .tb-btn.danger { border-color: #c0392b; color: #e74c3c; }
+  .tb-btn.danger:hover { background: #c0392b22; }
+
+  .tb-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+  #play-btn { min-width: 80px; }
+
+  .tb-select {
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    outline: none;
+  }
+  .tb-select option { background: #1a1a1a; }
+  .tb-select:hover { border-color: var(--text-dim); }
+
+  .volume-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  #vol-slider {
+    -webkit-appearance: none;
+    width: 80px;
+    height: 3px;
+    background: var(--border-bright);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  #vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  .tb-spacer { flex: 1; }
+
+  /* ── WORKSPACE ── */
+  #workspace {
+    position: fixed;
+    top: var(--toolbar-h);
+    left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    cursor: default;
+  }
+
+  #canvas-root {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  /* SVG grid + annotations */
+  #grid-svg {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+  }
+
+  /* ── CANVAS ELEMENTS ── */
+  .canvas-item {
+    position: absolute;
+    cursor: grab;
+    z-index: 10;
+  }
+  .canvas-item:active { cursor: grabbing; }
+  .canvas-item.selected .canvas-border-ring { border-color: var(--canvas-selected) !important; box-shadow: 0 0 0 1px var(--canvas-selected), 0 0 20px rgba(232,255,71,0.15); }
+
+  .canvas-border-ring {
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--canvas-border);
+    pointer-events: none;
+    z-index: 5;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .canvas-media {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #1a1a1a;
+  }
+
+  .canvas-base-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
+  }
+
+  .canvas-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
+  }
+
+  /* canvas-label removed — dimensions drawn via annotation SVG only */
+
+  .canvas-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+  .canvas-placeholder svg { width: 24px; height: 24px; stroke: var(--text-muted); fill: none; stroke-width: 1.2; }
+
+  /* Edit mode highlight */
+  .edit-mode .canvas-item {
+    cursor: pointer;
+  }
+  .edit-mode .canvas-item:hover .canvas-border-ring {
+    border-color: rgba(232,255,71,0.5);
+  }
+
+  /* Snap guides */
+  .snap-guide {
+    position: absolute;
+    background: var(--snap-color);
+    pointer-events: none;
+    z-index: 999;
+  }
+  .snap-guide.h { height: 1px; left: 0; right: 0; }
+  .snap-guide.v { width: 1px; top: 0; bottom: 0; }
+
+  /* ── EDIT PANEL ── */
+  #edit-panel {
+    position: fixed;
+    top: var(--toolbar-h);
+    right: 0;
+    width: 280px;
+    height: calc(100vh - var(--toolbar-h));
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    z-index: 500;
+    overflow-y: auto;
+  }
+  #edit-panel.open { display: flex; }
+
+  .panel-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .panel-close:hover { color: var(--text); }
+
+  .panel-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-section-title {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .field-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    width: 60px;
+    flex-shrink: 0;
+    letter-spacing: 0.04em;
+  }
+  .field-input {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border-bright);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    outline: none;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  .field-unit { font-size: 10px; color: var(--text-dim); }
+
+  .upload-btn {
+    width: 100%;
+    padding: 8px;
+    background: var(--bg);
+    border: 1px dashed var(--border-bright);
+    border-radius: 3px;
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    text-align: center;
+    margin-bottom: 8px;
+    transition: all 0.15s;
+  }
+  .upload-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .upload-file { display: none; }
+
+  .file-status {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-status.loaded { color: var(--accent); }
+
+  .btn-full {
+    width: 100%;
+    padding: 9px;
+    border-radius: 3px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    border: 1px solid var(--border-bright);
+    background: transparent;
+    color: var(--text);
+    margin-bottom: 6px;
+    transition: all 0.15s;
+  }
+  .btn-full:hover { background: #1a1a1a; border-color: var(--text-dim); }
+  .btn-full.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn-full.primary:hover { background: #d4e83e; }
+  .btn-full.delete { border-color: #c0392b; color: #e74c3c; }
+  .btn-full.delete:hover { background: #c0392b22; }
+
+  /* Add canvas panel section */
+  #add-canvas-section {
+    padding: 16px;
+  }
+  #add-canvas-section .panel-section-title { margin-bottom: 12px; }
+
+  /* ── OVERLAY LABELS SVG ── */
+  #annotation-svg {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  /* ── ZOOM INDICATOR ── */
+  #zoom-indicator {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    z-index: 200;
+  }
+
+  /* ── STATUS BAR ── */
+  #status-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 28px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+    z-index: 100;
+  }
+  #status-bar span { color: var(--text-dim); }
+  #status-bar .val { color: var(--text); }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+    margin-right: 4px;
+  }
+  .status-dot.playing { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+  /* ── CONTEXT HINT ── */
+  #hint {
+    position: fixed;
+    bottom: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(232,255,71,0.1);
+    border: 1px solid rgba(232,255,71,0.2);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  #hint.show { opacity: 1; }
+
+  /* Resize handles in edit mode */
+  .resize-handle {
+    position: absolute;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border: 1px solid #000;
+    border-radius: 1px;
+    z-index: 20;
+    display: none;
+    cursor: se-resize;
+  }
+  .edit-mode .selected .resize-handle { display: block; }
+  .resize-handle.br { bottom: -5px; right: -5px; cursor: se-resize; }
+  .resize-handle.bl { bottom: -5px; left: -5px; cursor: sw-resize; }
+  .resize-handle.tr { top: -5px; right: -5px; cursor: ne-resize; }
+  .resize-handle.tl { top: -5px; left: -5px; cursor: nw-resize; }
+
+  /* Empty state */
+  #empty-state {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }
+  #empty-state h2 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    letter-spacing: 0.05em;
+  }
+  #empty-state p {
+    font-size: 11px;
+    color: #2a2a2a;
+    letter-spacing: 0.04em;
+  }
+
+  /* Blend mode preview tag */
+  #blend-tag {
+    position: fixed;
+    bottom: 44px;
+    right: 16px;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <div class="toolbar-brand">Gallery Viz</div>
+
+  <button class="tb-btn" id="play-btn" onclick="togglePlay()">
+    <svg id="play-icon" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+    <svg id="pause-icon" viewBox="0 0 24 24" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    <span id="play-label">Play</span>
+  </button>
+
+  <button class="tb-btn" onclick="resetAll()" title="Reset to start">
+    <svg viewBox="0 0 24 24"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+    Reset
+  </button>
+
+  <div class="toolbar-sep"></div>
+
+  <select class="tb-select" id="blend-select" onchange="setBlendMode(this.value)" title="Overlay blend mode">
+    <option value="hard-light">Hard Light</option>
+    <option value="screen">Screen</option>
+    <option value="multiply">Multiply</option>
+    <option value="overlay">Overlay</option>
+    <option value="normal">Normal</option>
+    <option value="color-dodge">Color Dodge</option>
+    <option value="luminosity">Luminosity</option>
+  </select>
+
+  <div class="toolbar-sep"></div>
+
+  <button class="tb-btn" id="snap-btn" onclick="toggleSnap()" title="Snap to 0.5in grid">
+    <svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="19" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/><circle cx="5" cy="19" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/><circle cx="19" cy="19" r="1.5" fill="currentColor"/></svg>
+    Snap
+  </button>
+
+  <button class="tb-btn" id="edit-btn" onclick="toggleEditMode()" title="Edit canvases">
+    <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    Edit
+  </button>
+
+  <div class="toolbar-sep"></div>
+
+  <!-- Audio upload -->
+  <label class="tb-btn" title="Upload background audio" style="cursor:pointer;">
+    <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    Audio
+    <input type="file" accept="audio/*" onchange="loadAudio(event)" style="display:none">
+  </label>
+
+  <div class="volume-group">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+    <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.8" oninput="setVolume(this.value)">
+  </div>
+
+  <div class="tb-spacer"></div>
+
+  <span style="font-size:10px;color:var(--text-dim);letter-spacing:0.05em;">Scroll to zoom · Alt+drag to pan</span>
+</div>
+
+<!-- WORKSPACE -->
+<div id="workspace" onwheel="onWheel(event)" onmousedown="onWorkspaceMouseDown(event)" onmousemove="onMouseMove(event)" onmouseup="onMouseUp(event)" onmouseleave="onMouseUp(event)">
+  <div id="canvas-root">
+    <svg id="grid-svg"></svg>
+    <div id="empty-state">
+      <h2>No canvases yet</h2>
+      <p>Enable Edit mode and add a canvas to begin</p>
+    </div>
+  </div>
+  <svg id="annotation-svg" style="position:absolute;top:0;left:0;pointer-events:none;z-index:50;"></svg>
+</div>
+
+<!-- EDIT PANEL -->
+<div id="edit-panel">
+  <div class="panel-header">
+    Canvas Editor
+    <button class="panel-close" onclick="closePanel()">×</button>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-section-title">Dimensions</div>
+    <div class="field-row">
+      <span class="field-label">Width</span>
+      <input class="field-input" type="number" id="inp-w" min="1" step="0.5" value="24" oninput="applyDimensions()">
+      <span class="field-unit">in</span>
+    </div>
+    <div class="field-row">
+      <span class="field-label">Height</span>
+      <input class="field-input" type="number" id="inp-h" min="1" step="0.5" value="18" oninput="applyDimensions()">
+      <span class="field-unit">in</span>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-section-title">Base Image (PNG)</div>
+    <div class="file-status" id="img-status">No image loaded</div>
+    <label class="upload-btn">
+      ↑ Upload / Replace PNG
+      <input type="file" class="upload-file" accept="image/png,image/*" onchange="loadImage(event)">
+    </label>
+    <button class="btn-full" onclick="clearImage()">Clear Image</button>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-section-title">Overlay Video</div>
+    <div class="file-status" id="vid-status">No video loaded</div>
+    <label class="upload-btn">
+      ↑ Upload / Replace Video
+      <input type="file" class="upload-file" accept="video/*" onchange="loadVideo(event)">
+    </label>
+    <button class="btn-full" onclick="clearVideo()">Clear Video</button>
+  </div>
+
+  <div class="panel-section">
+    <button class="btn-full delete" onclick="deleteSelectedCanvas()">Delete Canvas</button>
+  </div>
+
+  <div id="add-canvas-section">
+    <div class="panel-section-title">Add Canvas</div>
+    <div class="field-row">
+      <span class="field-label">Width</span>
+      <input class="field-input" type="number" id="new-w" min="1" step="0.5" value="24">
+      <span class="field-unit">in</span>
+    </div>
+    <div class="field-row">
+      <span class="field-label">Height</span>
+      <input class="field-input" type="number" id="new-h" min="1" step="0.5" value="18">
+      <span class="field-unit">in</span>
+    </div>
+    <button class="btn-full primary" onclick="addCanvas()">+ Add Canvas</button>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="status-bar">
+  <span><span class="status-dot" id="play-dot"></span><span id="sb-play" class="val">Paused</span></span>
+  <span>Canvases: <span id="sb-count" class="val">0</span></span>
+  <span>Composition: <span id="sb-comp" class="val">—</span></span>
+  <span>Zoom: <span id="sb-zoom" class="val">100%</span></span>
+  <span id="sb-audio" style="display:none">Audio: <span class="val" id="sb-audio-val">—</span></span>
+  <div style="flex:1"></div>
+  <span style="color:var(--text-muted)">Gallery Visualizer v1.0</span>
+</div>
+
+<div id="zoom-indicator"></div>
+<div id="hint"></div>
+<div id="blend-tag">BLEND: HARD LIGHT</div>
+
+<script>
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+const state = {
+  canvases: [],       // { id, xIn, yIn, wIn, hIn, imgSrc, vidSrc, vidEl, imgEl }
+  nextId: 1,
+  zoom: 1.0,
+  panX: 80,
+  panY: 80,
+  isPlaying: false,
+  blendMode: 'hard-light',
+  snapEnabled: true,
+  editMode: false,
+  selectedId: null,
+  dragState: null,    // { type: 'canvas'|'pan', id?, startX, startY, origX, origY, ... }
+  audio: null,
+  ppi: 8,             // pixels per inch at zoom=1
+  gridMajor: 12,      // major grid every N inches
+  gridMinor: 1,       // minor grid every N inches
+};
+
+const SNAP_UNIT = 0.5; // inches
+
+// ─────────────────────────────────────────────
+// DOM HELPERS
+// ─────────────────────────────────────────────
+const workspace = document.getElementById('workspace');
+const canvasRoot = document.getElementById('canvas-root');
+const gridSvg = document.getElementById('grid-svg');
+const annotSvg = document.getElementById('annotation-svg');
+
+function px(inches) { return inches * state.ppi; }
+function inches(pixels) { return pixels / state.ppi; }
+
+function applyTransform() {
+  canvasRoot.style.transform = `translate(${state.panX}px,${state.panY}px) scale(${state.zoom})`;
+}
+
+// ─────────────────────────────────────────────
+// GRID
+// ─────────────────────────────────────────────
+function drawGrid() {
+  const ws = workspace.getBoundingClientRect();
+  const W = ws.width, H = ws.height - 28; // minus status bar
+
+  gridSvg.setAttribute('width', W);
+  gridSvg.setAttribute('height', H);
+  gridSvg.style.width = W + 'px';
+  gridSvg.style.height = H + 'px';
+
+  annotSvg.setAttribute('width', W);
+  annotSvg.setAttribute('height', H);
+
+  const cellPx = px(state.gridMinor) * state.zoom;
+  const majorCell = px(state.gridMajor) * state.zoom;
+
+  // Calculate offset based on pan
+  const offX = state.panX % majorCell;
+  const offY = state.panY % majorCell;
+
+  let lines = '';
+  // vertical
+  for (let x = offX % cellPx; x < W; x += cellPx) {
+    const isMajor = Math.abs((x - offX) % majorCell) < 1;
+    lines += `<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H}" stroke="${isMajor ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)'}" stroke-width="${isMajor ? 1 : 0.5}"/>`;
+  }
+  // horizontal
+  for (let y = offY % cellPx; y < H; y += cellPx) {
+    const isMajor = Math.abs((y - offY) % majorCell) < 1;
+    lines += `<line x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="${isMajor ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)'}" stroke-width="${isMajor ? 1 : 0.5}"/>`;
+  }
+  gridSvg.innerHTML = lines;
+}
+
+// ─────────────────────────────────────────────
+// ANNOTATIONS (dimension lines anchored to canvas corners)
+// ─────────────────────────────────────────────
+function drawAnnotations() {
+  const ws = workspace.getBoundingClientRect();
+  const W = ws.width, H = ws.height - 28;
+  annotSvg.setAttribute('width', W);
+  annotSvg.setAttribute('height', H);
+  annotSvg.style.width = W + 'px';
+  annotSvg.style.height = H + 'px';
+
+  if (state.canvases.length === 0) { annotSvg.innerHTML = ''; return; }
+
+  // Convert inch coords → screen coords (accounts for pan + zoom)
+  function sx(inX) { return state.panX + px(inX) * state.zoom; }
+  function sy(inY) { return state.panY + px(inY) * state.zoom; }
+  function f(n)    { return n.toFixed(1); }
+
+  // Colours
+  const C_DIM   = 'rgba(232,255,71,0.75)';   // yellow — per-canvas dimensions
+  const C_LINE  = 'rgba(232,255,71,0.35)';   // yellow faint — dimension lines/ticks
+  const C_GAP   = 'rgba(255,107,53,0.85)';   // orange — gap labels
+  const C_GAPL  = 'rgba(255,107,53,0.35)';   // orange faint — gap lines
+  const C_COMP  = 'rgba(255,255,255,0.5)';   // white — composition total
+  const C_COMPL = 'rgba(255,255,255,0.18)';  // white faint — comp ruler lines
+  const FONT    = 'DM Mono,monospace';
+  const FS      = '9';
+
+  // Offset distances (screen px) for dimension lines outside the canvas
+  const DIM_OFFSET_B = 18;  // below canvas (width dimension)
+  const DIM_OFFSET_R = 18;  // right of canvas (height dimension)
+  const TICK_LEN     = 4;   // half-length of end ticks
+
+  let html = '';
+
+  // Helper: horizontal dimension line.
+  // labelBelow=true  → label sits below the line (for lines below a canvas)
+  // labelBelow=false → label sits above the line (for comp ruler above canvases)
+  function hDimLine(x1, x2, y, label, col, colLine, labelBelow) {
+    const mx = (x1 + x2) / 2;
+    const labelY = labelBelow ? y + 10 : y - 4;
+    const baseline = labelBelow ? 'hanging' : 'auto';
+    html += `<line x1="${f(x1)}" y1="${f(y - TICK_LEN)}" x2="${f(x1)}" y2="${f(y + TICK_LEN)}" stroke="${colLine}" stroke-width="1"/>`;
+    html += `<line x1="${f(x2)}" y1="${f(y - TICK_LEN)}" x2="${f(x2)}" y2="${f(y + TICK_LEN)}" stroke="${colLine}" stroke-width="1"/>`;
+    html += `<line x1="${f(x1)}" y1="${f(y)}" x2="${f(x2)}" y2="${f(y)}" stroke="${colLine}" stroke-width="1"/>`;
+    html += `<text x="${f(mx)}" y="${f(labelY)}" fill="${col}" font-family="${FONT}" font-size="${FS}" text-anchor="middle" dominant-baseline="${baseline}">${label}</text>`;
+  }
+
+  // Helper: vertical dimension line.
+  // labelRight=true  → label sits to the right of the line (for lines right of a canvas)
+  // labelRight=false → label sits to the left  (for comp ruler left of canvases)
+  function vDimLine(y1, y2, x, label, col, colLine, labelRight) {
+    const my = (y1 + y2) / 2;
+    const textX = labelRight ? x + 10 : x - 10;
+    html += `<line x1="${f(x - TICK_LEN)}" y1="${f(y1)}" x2="${f(x + TICK_LEN)}" y2="${f(y1)}" stroke="${colLine}" stroke-width="1"/>`;
+    html += `<line x1="${f(x - TICK_LEN)}" y1="${f(y2)}" x2="${f(x + TICK_LEN)}" y2="${f(y2)}" stroke="${colLine}" stroke-width="1"/>`;
+    html += `<line x1="${f(x)}" y1="${f(y1)}" x2="${f(x)}" y2="${f(y2)}" stroke="${colLine}" stroke-width="1"/>`;
+    html += `<text x="${f(textX)}" y="${f(my)}" fill="${col}" font-family="${FONT}" font-size="${FS}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90,${f(textX)},${f(my)})">${label}</text>`;
+  }
+
+  // ── Per-canvas width + height dimension lines ──
+  for (const c of state.canvases) {
+    // Four corners in screen space
+    const left  = sx(c.xIn);
+    const right  = sx(c.xIn + c.wIn);
+    const top    = sy(c.yIn);
+    const bottom = sy(c.yIn + c.hIn);
+
+    const wLabel = `${c.wIn}"`;
+    const hLabel = `${c.hIn}"`;
+
+    // Width line: below the canvas — label sits below the line
+    hDimLine(left, right, bottom + DIM_OFFSET_B, wLabel, C_DIM, C_LINE, true);
+
+    // Height line: right of the canvas — label sits to the right of the line
+    vDimLine(top, bottom, right + DIM_OFFSET_R, hLabel, C_DIM, C_LINE, true);
+  }
+
+  // ── Gap lines between horizontally adjacent canvases ──
+  // Find pairs whose right/left edges face each other (sorted by X)
+  const byX = [...state.canvases].sort((a, b) => a.xIn - b.xIn);
+  for (let i = 0; i < byX.length - 1; i++) {
+    const a = byX[i];
+    const b = byX[i + 1];
+    const gapIn = b.xIn - (a.xIn + a.wIn);
+    if (gapIn > 0.05 && gapIn < 999) {
+      // Draw gap line at the vertical midpoint of the shorter of the two canvases
+      const aTopS  = sy(a.yIn);
+      const aBotS  = sy(a.yIn + a.hIn);
+      const bTopS  = sy(b.yIn);
+      const bBotS  = sy(b.yIn + b.hIn);
+      const lineY  = (Math.max(aTopS, bTopS) + Math.min(aBotS, bBotS)) / 2 ||
+                     (sy(a.yIn + a.hIn / 2));
+      const x1 = sx(a.xIn + a.wIn);
+      const x2 = sx(b.xIn);
+      hDimLine(x1, x2, lineY, `${gapIn.toFixed(2)}"`, C_GAP, C_GAPL, false);
+    }
+  }
+
+  // ── Gap lines between vertically adjacent canvases ──
+  const byY = [...state.canvases].sort((a, b) => a.yIn - b.yIn);
+  for (let i = 0; i < byY.length - 1; i++) {
+    const a = byY[i];
+    const b = byY[i + 1];
+    const gapIn = b.yIn - (a.yIn + a.hIn);
+    if (gapIn > 0.05 && gapIn < 999) {
+      const aLeftS  = sx(a.xIn);
+      const aRightS = sx(a.xIn + a.wIn);
+      const bLeftS  = sx(b.xIn);
+      const bRightS = sx(b.xIn + b.wIn);
+      const lineX   = (Math.max(aLeftS, bLeftS) + Math.min(aRightS, bRightS)) / 2 ||
+                      sx(a.xIn + a.wIn / 2);
+      const y1 = sy(a.yIn + a.hIn);
+      const y2 = sy(b.yIn);
+      vDimLine(y1, y2, lineX, `${gapIn.toFixed(2)}"`, C_GAP, C_GAPL, true);
+    }
+  }
+
+  // ── Composition total ruler (only when >1 canvas) ──
+  if (state.canvases.length > 1) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of state.canvases) {
+      minX = Math.min(minX, c.xIn);
+      minY = Math.min(minY, c.yIn);
+      maxX = Math.max(maxX, c.xIn + c.wIn);
+      maxY = Math.max(maxY, c.yIn + c.hIn);
+    }
+    const compW = maxX - minX;
+    const compH = maxY - minY;
+
+    const left   = sx(minX);
+    const right  = sx(maxX);
+    const top    = sy(minY);
+    const bottom = sy(maxY);
+
+    // Comp width ruler above all canvases — label sits above the line
+    const rulerY = top - 32;
+    hDimLine(left, right, rulerY, `${compW.toFixed(2)}" total`, C_COMP, C_COMPL, false);
+
+    // Comp height ruler left of all canvases — label sits to the left of the line
+    const rulerX = left - 32;
+    vDimLine(top, bottom, rulerX, `${compH.toFixed(2)}" total`, C_COMP, C_COMPL, false);
+
+    document.getElementById('sb-comp').textContent = `${compW.toFixed(1)}" × ${compH.toFixed(1)}"`;
+  } else if (state.canvases.length === 1) {
+    const c = state.canvases[0];
+    document.getElementById('sb-comp').textContent = `${c.wIn}" × ${c.hIn}"`;
+  }
+
+  annotSvg.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────
+// CANVAS MANAGEMENT
+// ─────────────────────────────────────────────
+function addCanvas(wIn, hIn) {
+  wIn = wIn || parseFloat(document.getElementById('new-w').value) || 24;
+  hIn = hIn || parseFloat(document.getElementById('new-h').value) || 18;
+
+  // Place near centre of viewport
+  const ws = workspace.getBoundingClientRect();
+  const viewCentreX = (ws.width / 2 - state.panX) / state.zoom;
+  const viewCentreY = (ws.height / 2 - state.panY) / state.zoom;
+  const xIn = Math.max(0, inches(viewCentreX) - wIn / 2);
+  const yIn = Math.max(0, inches(viewCentreY) - hIn / 2);
+
+  const id = state.nextId++;
+  const c = { id, xIn, yIn, wIn, hIn, imgSrc: null, vidSrc: null, vidEl: null, imgEl: null };
+  state.canvases.push(c);
+
+  renderCanvas(c);
+  updateEmptyState();
+  updateStatusBar();
+  drawAnnotations();
+  showHint('Canvas added — drag to position');
+  selectCanvas(id);
+}
+
+function renderCanvas(c) {
+  // Remove existing element if any
+  const existing = document.getElementById('cv-' + c.id);
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.className = 'canvas-item';
+  el.id = 'cv-' + c.id;
+  el.style.left = px(c.xIn) + 'px';
+  el.style.top = px(c.yIn) + 'px';
+  el.style.width = px(c.wIn) + 'px';
+  el.style.height = px(c.hIn) + 'px';
+
+  const media = document.createElement('div');
+  media.className = 'canvas-media';
+
+  // Base image
+  if (c.imgSrc) {
+    const img = document.createElement('img');
+    img.className = 'canvas-base-img';
+    img.src = c.imgSrc;
+    media.appendChild(img);
+    c.imgEl = img;
+  } else {
+    // Placeholder
+    const ph = document.createElement('div');
+    ph.className = 'canvas-placeholder';
+    ph.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg><span>No image</span>`;
+    media.appendChild(ph);
+  }
+
+  // Video overlay
+  if (c.vidSrc) {
+    const vid = document.createElement('video');
+    vid.className = 'canvas-video';
+    vid.src = c.vidSrc;
+    vid.loop = true;
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.style.mixBlendMode = state.blendMode;
+    if (state.isPlaying) vid.play();
+    media.appendChild(vid);
+    c.vidEl = vid;
+  }
+
+  el.appendChild(media);
+
+  // Resize handles
+  ['tl','tr','bl','br'].forEach(pos => {
+    const h = document.createElement('div');
+    h.className = `resize-handle ${pos}`;
+    h.dataset.handle = pos;
+    h.addEventListener('mousedown', e => onResizeStart(e, c.id, pos));
+    el.appendChild(h);
+  });
+
+  // Border ring
+  const ring = document.createElement('div');
+  ring.className = 'canvas-border-ring';
+  el.appendChild(ring);
+
+  el.addEventListener('mousedown', e => onCanvasMouseDown(e, c.id));
+
+  canvasRoot.appendChild(el);
+}
+
+function updateCanvasElement(c) {
+  const el = document.getElementById('cv-' + c.id);
+  if (!el) return;
+  el.style.left = px(c.xIn) + 'px';
+  el.style.top = px(c.yIn) + 'px';
+  el.style.width = px(c.wIn) + 'px';
+  el.style.height = px(c.hIn) + 'px';
+}
+
+function deleteSelectedCanvas() {
+  if (!state.selectedId) return;
+  const idx = state.canvases.findIndex(c => c.id === state.selectedId);
+  if (idx === -1) return;
+  const c = state.canvases[idx];
+  if (c.vidEl) { c.vidEl.pause(); URL.revokeObjectURL(c.vidSrc); }
+  if (c.imgSrc && c.imgSrc.startsWith('blob:')) URL.revokeObjectURL(c.imgSrc);
+  const el = document.getElementById('cv-' + c.id);
+  if (el) el.remove();
+  state.canvases.splice(idx, 1);
+  state.selectedId = null;
+  closePanel();
+  updateEmptyState();
+  updateStatusBar();
+  drawAnnotations();
+}
+
+function updateEmptyState() {
+  const es = document.getElementById('empty-state');
+  es.style.display = state.canvases.length === 0 ? 'block' : 'none';
+}
+
+// ─────────────────────────────────────────────
+// SELECTION
+// ─────────────────────────────────────────────
+function selectCanvas(id) {
+  // Deselect all
+  document.querySelectorAll('.canvas-item').forEach(el => el.classList.remove('selected'));
+  state.selectedId = id;
+  if (id) {
+    const el = document.getElementById('cv-' + id);
+    if (el) el.classList.add('selected');
+    if (state.editMode) openPanelForCanvas(id);
+  }
+}
+
+function openPanelForCanvas(id) {
+  const c = state.canvases.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('inp-w').value = c.wIn;
+  document.getElementById('inp-h').value = c.hIn;
+  document.getElementById('img-status').textContent = c.imgSrc ? '✓ Image loaded' : 'No image loaded';
+  document.getElementById('img-status').className = 'file-status' + (c.imgSrc ? ' loaded' : '');
+  document.getElementById('vid-status').textContent = c.vidEl ? '✓ Video loaded' : 'No video loaded';
+  document.getElementById('vid-status').className = 'file-status' + (c.vidEl ? ' loaded' : '');
+  document.getElementById('edit-panel').classList.add('open');
+}
+
+function closePanel() {
+  document.getElementById('edit-panel').classList.remove('open');
+}
+
+// ─────────────────────────────────────────────
+// DRAG
+// ─────────────────────────────────────────────
+function onCanvasMouseDown(e, id) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  e.preventDefault();
+
+  selectCanvas(id);
+
+  if (state.editMode) {
+    openPanelForCanvas(id);
+    // Don't drag in edit mode if clicking edit panel area
+  }
+
+  // Pause on drag start if playing
+  const wasDragging = false;
+  const c = state.canvases.find(x => x.id === id);
+
+  state.dragState = {
+    type: 'canvas',
+    id,
+    startX: e.clientX,
+    startY: e.clientY,
+    origX: c.xIn,
+    origY: c.yIn,
+    moved: false
+  };
+
+  // Bring to front
+  const el = document.getElementById('cv-' + id);
+  if (el) canvasRoot.appendChild(el);
+}
+
+function onWorkspaceMouseDown(e) {
+  if (e.button !== 0 && e.button !== 1) return;
+  if (e.target !== workspace && e.target !== canvasRoot && e.target.id !== 'grid-svg' && e.target.id !== 'annotation-svg') return;
+
+  if (e.altKey || e.button === 1) {
+    state.dragState = { type: 'pan', startX: e.clientX, startY: e.clientY, origPanX: state.panX, origPanY: state.panY };
+    workspace.style.cursor = 'grabbing';
+  } else {
+    // Deselect
+    selectCanvas(null);
+    closePanel();
+  }
+}
+
+function onMouseMove(e) {
+  if (!state.dragState) return;
+  const ds = state.dragState;
+
+  if (ds.type === 'pan') {
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+    state.panX = ds.origPanX + dx;
+    state.panY = ds.origPanY + dy;
+    applyTransform();
+    drawGrid();
+    drawAnnotations();
+    return;
+  }
+
+  if (ds.type === 'canvas') {
+    const dx = (e.clientX - ds.startX) / state.zoom;
+    const dy = (e.clientY - ds.startY) / state.zoom;
+    ds.moved = true;
+
+    const c = state.canvases.find(x => x.id === ds.id);
+    if (!c) return;
+
+    let newX = ds.origX + inches(dx);
+    let newY = ds.origY + inches(dy);
+    newX = Math.max(0, newX);
+    newY = Math.max(0, newY);
+
+    if (state.snapEnabled) {
+      newX = Math.round(newX / SNAP_UNIT) * SNAP_UNIT;
+      newY = Math.round(newY / SNAP_UNIT) * SNAP_UNIT;
+    }
+
+    c.xIn = newX;
+    c.yIn = newY;
+    updateCanvasElement(c);
+    drawAnnotations();
+    return;
+  }
+
+  if (ds.type === 'resize') {
+    const c = state.canvases.find(x => x.id === ds.id);
+    if (!c) return;
+    const dx = inches((e.clientX - ds.startX) / state.zoom);
+    const dy = inches((e.clientY - ds.startY) / state.zoom);
+
+    let newW = ds.origW, newH = ds.origH, newX = ds.origX, newY = ds.origY;
+
+    if (ds.handle === 'br') { newW = Math.max(1, ds.origW + dx); newH = Math.max(1, ds.origH + dy); }
+    if (ds.handle === 'bl') { newW = Math.max(1, ds.origW - dx); newX = ds.origX + ds.origW - newW; newH = Math.max(1, ds.origH + dy); }
+    if (ds.handle === 'tr') { newW = Math.max(1, ds.origW + dx); newH = Math.max(1, ds.origH - dy); newY = ds.origY + ds.origH - newH; }
+    if (ds.handle === 'tl') { newW = Math.max(1, ds.origW - dx); newX = ds.origX + ds.origW - newW; newH = Math.max(1, ds.origH - dy); newY = ds.origY + ds.origH - newH; }
+
+    if (state.snapEnabled) {
+      newW = Math.round(newW / SNAP_UNIT) * SNAP_UNIT;
+      newH = Math.round(newH / SNAP_UNIT) * SNAP_UNIT;
+      newX = Math.round(newX / SNAP_UNIT) * SNAP_UNIT;
+      newY = Math.round(newY / SNAP_UNIT) * SNAP_UNIT;
+    }
+
+    c.wIn = Math.max(0.5, newW);
+    c.hIn = Math.max(0.5, newH);
+    c.xIn = Math.max(0, newX);
+    c.yIn = Math.max(0, newY);
+    updateCanvasElement(c);
+    syncPanelDimensions(c);
+    drawAnnotations();
+  }
+}
+
+function onMouseUp(e) {
+  if (!state.dragState) return;
+  workspace.style.cursor = 'default';
+  state.dragState = null;
+}
+
+function onResizeStart(e, id, handle) {
+  if (!state.editMode) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const c = state.canvases.find(x => x.id === id);
+  state.dragState = {
+    type: 'resize',
+    id,
+    handle,
+    startX: e.clientX,
+    startY: e.clientY,
+    origW: c.wIn,
+    origH: c.hIn,
+    origX: c.xIn,
+    origY: c.yIn
+  };
+}
+
+function syncPanelDimensions(c) {
+  if (state.selectedId !== c.id) return;
+  document.getElementById('inp-w').value = c.wIn;
+  document.getElementById('inp-h').value = c.hIn;
+}
+
+// ─────────────────────────────────────────────
+// ZOOM
+// ─────────────────────────────────────────────
+function onWheel(e) {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  const ws = workspace.getBoundingClientRect();
+  const mouseX = e.clientX - ws.left;
+  const mouseY = e.clientY - ws.top;
+
+  const newZoom = Math.max(0.1, Math.min(10, state.zoom * factor));
+  const zoomChange = newZoom / state.zoom;
+
+  state.panX = mouseX - zoomChange * (mouseX - state.panX);
+  state.panY = mouseY - zoomChange * (mouseY - state.panY);
+  state.zoom = newZoom;
+
+  applyTransform();
+  drawGrid();
+  drawAnnotations();
+  document.getElementById('sb-zoom').textContent = Math.round(state.zoom * 100) + '%';
+}
+
+// ─────────────────────────────────────────────
+// PLAYBACK
+// ─────────────────────────────────────────────
+function togglePlay() {
+  state.isPlaying ? pauseAll() : playAll();
+}
+
+function playAll() {
+  state.isPlaying = true;
+  state.canvases.forEach(c => { if (c.vidEl) c.vidEl.play(); });
+  if (state.audio) state.audio.play();
+  updatePlayUI();
+}
+
+function pauseAll() {
+  state.isPlaying = false;
+  state.canvases.forEach(c => { if (c.vidEl) c.vidEl.pause(); });
+  if (state.audio) state.audio.pause();
+  updatePlayUI();
+}
+
+function resetAll() {
+  pauseAll();
+  state.canvases.forEach(c => { if (c.vidEl) { c.vidEl.currentTime = 0; } });
+  if (state.audio) state.audio.currentTime = 0;
+  showHint('Reset to 00:00');
+}
+
+function updatePlayUI() {
+  const pi = document.getElementById('play-icon');
+  const pa = document.getElementById('pause-icon');
+  const lbl = document.getElementById('play-label');
+  const dot = document.getElementById('play-dot');
+  const sb = document.getElementById('sb-play');
+  if (state.isPlaying) {
+    pi.style.display = 'none'; pa.style.display = ''; lbl.textContent = 'Pause';
+    dot.classList.add('playing'); sb.textContent = 'Playing';
+  } else {
+    pi.style.display = ''; pa.style.display = 'none'; lbl.textContent = 'Play';
+    dot.classList.remove('playing'); sb.textContent = 'Paused';
+  }
+}
+
+// ─────────────────────────────────────────────
+// BLEND MODE
+// ─────────────────────────────────────────────
+function setBlendMode(mode) {
+  state.blendMode = mode;
+  document.querySelectorAll('.canvas-video').forEach(v => { v.style.mixBlendMode = mode; });
+  document.getElementById('blend-tag').textContent = 'BLEND: ' + mode.replace('-', ' ').toUpperCase();
+}
+
+// ─────────────────────────────────────────────
+// EDIT MODE
+// ─────────────────────────────────────────────
+function toggleEditMode() {
+  state.editMode = !state.editMode;
+  const btn = document.getElementById('edit-btn');
+  const panel = document.getElementById('edit-panel');
+  if (state.editMode) {
+    btn.classList.add('active');
+    canvasRoot.classList.add('edit-mode');
+    panel.classList.add('open');
+    showHint('Click a canvas to edit it');
+  } else {
+    btn.classList.remove('active');
+    canvasRoot.classList.remove('edit-mode');
+    panel.classList.remove('open');
+    selectCanvas(null);
+  }
+}
+
+// ─────────────────────────────────────────────
+// SNAP
+// ─────────────────────────────────────────────
+function toggleSnap() {
+  state.snapEnabled = !state.snapEnabled;
+  const btn = document.getElementById('snap-btn');
+  btn.classList.toggle('active', state.snapEnabled);
+  showHint(state.snapEnabled ? 'Snap ON — 0.5" grid' : 'Snap OFF');
+}
+
+// ─────────────────────────────────────────────
+// PANEL ACTIONS
+// ─────────────────────────────────────────────
+function applyDimensions() {
+  if (!state.selectedId) return;
+  const c = state.canvases.find(x => x.id === state.selectedId);
+  if (!c) return;
+  const w = parseFloat(document.getElementById('inp-w').value);
+  const h = parseFloat(document.getElementById('inp-h').value);
+  if (!isNaN(w) && w >= 0.5) c.wIn = w;
+  if (!isNaN(h) && h >= 0.5) c.hIn = h;
+  updateCanvasElement(c);
+  drawAnnotations();
+}
+
+function loadImage(event) {
+  if (!state.selectedId) return;
+  const file = event.target.files[0];
+  if (!file) return;
+  const c = state.canvases.find(x => x.id === state.selectedId);
+  if (!c) return;
+  if (c.imgSrc && c.imgSrc.startsWith('blob:')) URL.revokeObjectURL(c.imgSrc);
+  c.imgSrc = URL.createObjectURL(file);
+  renderCanvas(c);
+  document.getElementById('img-status').textContent = '✓ ' + file.name;
+  document.getElementById('img-status').className = 'file-status loaded';
+  if (state.isPlaying && c.vidEl) c.vidEl.play();
+  selectCanvas(c.id);
+  event.target.value = '';
+}
+
+function clearImage() {
+  if (!state.selectedId) return;
+  const c = state.canvases.find(x => x.id === state.selectedId);
+  if (!c) return;
+  if (c.imgSrc && c.imgSrc.startsWith('blob:')) URL.revokeObjectURL(c.imgSrc);
+  c.imgSrc = null; c.imgEl = null;
+  renderCanvas(c);
+  document.getElementById('img-status').textContent = 'No image loaded';
+  document.getElementById('img-status').className = 'file-status';
+  selectCanvas(c.id);
+}
+
+function loadVideo(event) {
+  if (!state.selectedId) return;
+  const file = event.target.files[0];
+  if (!file) return;
+  const c = state.canvases.find(x => x.id === state.selectedId);
+  if (!c) return;
+  if (c.vidSrc && c.vidSrc.startsWith('blob:')) URL.revokeObjectURL(c.vidSrc);
+  c.vidSrc = URL.createObjectURL(file);
+  renderCanvas(c);
+  document.getElementById('vid-status').textContent = '✓ ' + file.name;
+  document.getElementById('vid-status').className = 'file-status loaded';
+  if (state.isPlaying && c.vidEl) c.vidEl.play();
+  selectCanvas(c.id);
+  event.target.value = '';
+}
+
+function clearVideo() {
+  if (!state.selectedId) return;
+  const c = state.canvases.find(x => x.id === state.selectedId);
+  if (!c) return;
+  if (c.vidEl) c.vidEl.pause();
+  if (c.vidSrc && c.vidSrc.startsWith('blob:')) URL.revokeObjectURL(c.vidSrc);
+  c.vidSrc = null; c.vidEl = null;
+  renderCanvas(c);
+  document.getElementById('vid-status').textContent = 'No video loaded';
+  document.getElementById('vid-status').className = 'file-status';
+  selectCanvas(c.id);
+}
+
+// ─────────────────────────────────────────────
+// AUDIO
+// ─────────────────────────────────────────────
+function loadAudio(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (state.audio) { state.audio.pause(); URL.revokeObjectURL(state.audio.src); }
+  const audio = new Audio(URL.createObjectURL(file));
+  audio.loop = true;
+  audio.volume = parseFloat(document.getElementById('vol-slider').value);
+  state.audio = audio;
+  if (state.isPlaying) audio.play();
+  const sb = document.getElementById('sb-audio');
+  sb.style.display = '';
+  document.getElementById('sb-audio-val').textContent = file.name.substring(0, 20);
+  showHint('Audio loaded: ' + file.name.substring(0, 24));
+  event.target.value = '';
+}
+
+function setVolume(v) {
+  if (state.audio) state.audio.volume = parseFloat(v);
+}
+
+// ─────────────────────────────────────────────
+// STATUS + MISC
+// ─────────────────────────────────────────────
+function updateStatusBar() {
+  document.getElementById('sb-count').textContent = state.canvases.length;
+}
+
+let hintTimer = null;
+function showHint(msg) {
+  const h = document.getElementById('hint');
+  h.textContent = msg;
+  h.classList.add('show');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => h.classList.remove('show'), 2200);
+}
+
+// ─────────────────────────────────────────────
+// KEYBOARD
+// ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'KeyR' && !e.metaKey) resetAll();
+  if (e.code === 'KeyE') toggleEditMode();
+  if (e.code === 'Escape') { selectCanvas(null); closePanel(); }
+  if ((e.code === 'Delete' || e.code === 'Backspace') && state.selectedId && state.editMode) {
+    if (confirm('Delete selected canvas?')) deleteSelectedCanvas();
+  }
+  // Arrow nudge
+  if (state.selectedId && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) {
+    e.preventDefault();
+    const c = state.canvases.find(x => x.id === state.selectedId);
+    if (!c) return;
+    const step = e.shiftKey ? 1 : SNAP_UNIT;
+    if (e.code === 'ArrowLeft') c.xIn = Math.max(0, c.xIn - step);
+    if (e.code === 'ArrowRight') c.xIn += step;
+    if (e.code === 'ArrowUp') c.yIn = Math.max(0, c.yIn - step);
+    if (e.code === 'ArrowDown') c.yIn += step;
+    updateCanvasElement(c);
+    drawAnnotations();
+  }
+});
+
+// ─────────────────────────────────────────────
+// WINDOW RESIZE
+// ─────────────────────────────────────────────
+window.addEventListener('resize', () => { drawGrid(); drawAnnotations(); });
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+function init() {
+  // Set initial root size large enough for content
+  canvasRoot.style.width = '10000px';
+  canvasRoot.style.height = '10000px';
+
+  // Activate snap by default
+  document.getElementById('snap-btn').classList.add('active');
+
+  applyTransform();
+  drawGrid();
+  drawAnnotations();
+  updateEmptyState();
+  updateStatusBar();
+
+  // Welcome hint
+  setTimeout(() => showHint('Space = play/pause · E = edit mode · Scroll = zoom · Alt+drag = pan'), 800);
+}
+
+init();
+</script>
+</body>
+</html>
